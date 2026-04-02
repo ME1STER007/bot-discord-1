@@ -1,9 +1,5 @@
 require('dotenv').config();
 
-console.log('TOKEN:', process.env.TOKEN ? 'OK' : 'NO');
-console.log('TOKEN VALOR:', process.env.TOKEN);
-require('dotenv').config();
-
 const {
   Client,
   GatewayIntentBits,
@@ -18,6 +14,19 @@ const {
 
 const fs = require('fs');
 
+// 🌐 EXPRESS (PARA QUE RENDER NO APAGUE EL BOT)
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.send('Bot activo');
+});
+
+app.listen(3000, () => {
+  console.log('🌐 Servidor web activo');
+});
+
+// ======================
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
@@ -142,20 +151,41 @@ client.once(Events.ClientReady, () => {
 // ======================
 client.on(Events.InteractionCreate, async interaction => {
 
-  // SLASH COMMANDS
-  if (interaction.isChatInputCommand()) {
-    const command = client.commands.get(interaction.commandName);
-    if (command) return command.execute(interaction);
-  }
-
-  if (!interaction.isButton()) return;
-
-  const id = interaction.customId;
-
   try {
+
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) return;
+      return await command.execute(interaction);
+    }
+
+    if (!interaction.isButton()) return;
+
+    const id = interaction.customId;
+
+    // 🔐 VERIFICACIÓN
+    if (id === 'verify_button') {
+
+      const role = interaction.guild.roles.cache.find(r => r.name === 'Miembro');
+
+      if (!role) {
+        return interaction.reply({ content: '❌ Rol "Miembro" no encontrado', ephemeral: true });
+      }
+
+      if (interaction.member.roles.cache.has(role.id)) {
+        return interaction.reply({ content: '⚠️ Ya estás verificado', ephemeral: true });
+      }
+
+      await interaction.member.roles.add(role);
+
+      return interaction.reply({
+        content: '✅ Ya estás verificado!',
+        ephemeral: true
+      });
+    }
+
     await interaction.deferUpdate();
 
-    // CREAR SALA
     if (id.startsWith('modo_')) {
       const modo = id.replace('modo_', '');
       const s = crearSala(interaction.user, modo);
@@ -166,7 +196,6 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    // JOIN / LEAVE
     if (id.startsWith('join_') || id.startsWith('leave_')) {
 
       let accion, equipo, salaId;
@@ -195,7 +224,6 @@ client.on(Events.InteractionCreate, async interaction => {
         if (equipo === 'rojo' && s.rojo.length < s.size) s.rojo.push(uid);
       }
 
-      // SALA LLENA
       if (s.azul.length === s.size && s.rojo.length === s.size) {
 
         const jugadores = [...s.azul, ...s.rojo];
@@ -240,140 +268,18 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    // GANADOR
-    if (id.startsWith('win_')) {
-
-      const salaId = id.split('_')[2];
-      const s = salas[salaId];
-      if (!s) return;
-
-      if (interaction.user.id !== s.creador) {
-        return interaction.followUp({
-          content: '❌ Solo el creador puede elegir ganador',
-          ephemeral: true
-        });
-      }
-
-      s.ganador = id.includes('azul') ? 'azul' : 'rojo';
-
-      const jugadores = [...s.azul, ...s.rojo];
-      const row = new ActionRowBuilder();
-
-      jugadores.forEach(uid => {
-        row.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`mvp_${uid}_${s.id}`)
-            .setLabel(interaction.guild.members.cache.get(uid)?.user.username || 'Jugador')
-            .setStyle(ButtonStyle.Primary)
-        );
-      });
-
-      return interaction.message.edit({
-        content: '⭐ Elegí MVP',
-        components: [row]
-      });
-    }
-
-    // MVP
-    if (id.startsWith('mvp_')) {
-
-      const [, uid, salaId] = id.split('_');
-      const s = salas[salaId];
-      if (!s) return;
-
-      if (interaction.user.id !== s.creador) {
-        return interaction.followUp({
-          content: '❌ Solo el creador decide el MVP',
-          ephemeral: true
-        });
-      }
-
-      s.mvp = uid;
-
-      const jugadores = [...s.azul, ...s.rojo];
-      const row = new ActionRowBuilder();
-
-      jugadores.forEach(id => {
-        row.addComponents(
-          new ButtonBuilder()
-            .setCustomId(`creador_${id}_${s.id}`)
-            .setLabel(interaction.guild.members.cache.get(id)?.user.username || 'Jugador')
-            .setStyle(ButtonStyle.Secondary)
-        );
-      });
-
-      return interaction.message.edit({
-        content: '👑 ¿Quién creó la sala?',
-        components: [row]
-      });
-    }
-
-    // FINAL
-    if (id.startsWith('creador_')) {
-
-      const [, creadorId, salaId] = id.split('_');
-      const s = salas[salaId];
-      if (!s) return;
-
-      if (interaction.user.id !== s.creador) {
-        return interaction.followUp({
-          content: '❌ Solo el creador decide esto',
-          ephemeral: true
-        });
-      }
-
-      const stats = getStats();
-      const jugadores = [...s.azul, ...s.rojo];
-
-      jugadores.forEach(id => {
-        if (!stats[id]) stats[id] = { puntos: 0, wins: 0, losses: 0, mvp: 0, creador: 0 };
-
-        const win =
-          (s.ganador === 'azul' && s.azul.includes(id)) ||
-          (s.ganador === 'rojo' && s.rojo.includes(id));
-
-        stats[id].puntos += win ? 50 : -30;
-        win ? stats[id].wins++ : stats[id].losses++;
-
-        if (id === s.mvp) {
-          stats[id].puntos += 20;
-          stats[id].mvp++;
-        }
-
-        if (id === creadorId) {
-          stats[id].puntos += 15;
-          stats[id].creador++;
-        }
-      });
-
-      saveStats(stats);
-
-      const ranking = Object.entries(stats).sort((a,b)=>b[1].puntos-a[1].puntos);
-
-      for (let i = 0; i < ranking.length; i++) {
-        const member = await interaction.guild.members.fetch(ranking[i][0]).catch(()=>null);
-        if (!member) continue;
-
-        await member.setNickname(`RANK ${i+1} | ${member.user.username}`).catch(()=>{});
-        await actualizarRol(member, ranking[i][1].puntos);
-      }
-
-      if (s.canal) {
-        setTimeout(() => s.canal.delete().catch(()=>{}), 5000);
-      }
-
-      delete salas[salaId];
-      libres.push(parseInt(salaId));
-
-      return interaction.message.edit({
-        content: `🏆 Resultado\nGanador: ${s.ganador}\nMVP: <@${s.mvp}>`,
-        components: []
-      });
-    }
-
   } catch (e) {
     console.log(e);
+
+    if (interaction.deferred || interaction.replied) {
+      interaction.editReply({ content: '❌ Error' }).catch(()=>{});
+    } else {
+      interaction.reply({ content: '❌ Error', ephemeral: true }).catch(()=>{});
+    }
   }
 });
 
+// ======================
+// 🔑 LOGIN
+// ======================
 client.login(process.env.TOKEN);
