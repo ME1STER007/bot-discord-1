@@ -1,5 +1,9 @@
 require('dotenv').config();
 
+console.log('TOKEN:', process.env.TOKEN ? 'OK' : 'NO');
+console.log('TOKEN VALOR:', process.env.TOKEN);
+require('dotenv').config();
+
 const {
   Client,
   GatewayIntentBits,
