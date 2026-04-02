@@ -1,3 +1,19 @@
+// ======================
+// 🔥 EXPRESS (ANTI SLEEP RENDER)
+// ======================
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.send('Bot encendido');
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log('🌐 Web activa en puerto', PORT));
+
+// ======================
+// ⚙️ CONFIG
+// ======================
 require('dotenv').config();
 
 const {
@@ -14,19 +30,6 @@ const {
 
 const fs = require('fs');
 
-// 🌐 EXPRESS (PARA QUE RENDER NO APAGUE EL BOT)
-const express = require('express');
-const app = express();
-
-app.get('/', (req, res) => {
-  res.send('Bot activo');
-});
-
-app.listen(3000, () => {
-  console.log('🌐 Servidor web activo');
-});
-
-// ======================
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
@@ -163,7 +166,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
     const id = interaction.customId;
 
-    // 🔐 VERIFICACIÓN
     if (id === 'verify_button') {
 
       const role = interaction.guild.roles.cache.find(r => r.name === 'Miembro');
@@ -279,7 +281,4 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 });
 
-// ======================
-// 🔑 LOGIN
-// ======================
 client.login(process.env.TOKEN);
